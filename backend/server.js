@@ -9,6 +9,7 @@ const session = require("express-session");
 
 const authRoutes = require("./routes/authRoutes");
 const medicineRoutes = require("./routes/medicineRoutes");
+const reminderWorker = require("./routes/reminderWorker");
 const requireAuth = require("./middleware/requireAuth");
 
 const startReminderScheduler = require("./services/reminderScheduler");
@@ -54,6 +55,7 @@ app.use(
 
 app.use("/api/auth", authRoutes);
 app.use("/api/medicines", medicineRoutes);
+app.use("/api/reminder-worker", reminderWorker);
 
 app.get("/api/protected-test", requireAuth, (req, res) => {
   res.json({ message: "You are signed in." });
@@ -71,7 +73,8 @@ mongoose
   .then(() => {
     console.log("MongoDB connected");
 
-    startReminderScheduler();
+    // Render Free uses the external Google timer. Keep SMTP available for local development.
+    if (!production && !process.env.REMINDER_WORKER_SECRET) startReminderScheduler();
 
     app.listen(PORT, () => {
       console.log(`Server is running at ${PORT}`);

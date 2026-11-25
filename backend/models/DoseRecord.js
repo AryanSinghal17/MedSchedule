@@ -24,6 +24,8 @@ const doseSchema = new Schema(
       enum: ["Pending", "Taken", "Missed"],
       default: "Pending",
     },
+    emailLeaseToken: String,
+    emailLeaseUntil: Date,
     emailSentAt: {
       type: Date,
       default: null,
