@@ -34,6 +34,7 @@ function validateMedicine(body, partial = false) {
 // Read today's dose records once and attach their statuses to the user's medicines.
 router.get("/", requireAuth, async (req, res) => {
   try {
+    console.log(req)
     const medicines = await Medicine.find({
       userId: req.session.userId,
     }).sort({ reminderTime: 1 }).lean();

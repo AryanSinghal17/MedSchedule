@@ -68,12 +68,15 @@ export default function App() {
 
         // A list request can finish after the user deletes a row.
         if (!controller.signal.aborted) {
-          setMedicines(data.medicines.filter(item => !deletedIds.has(item._id)));
+          setMedicines(
+            data.medicines.filter((item) => !deletedIds.has(item._id)),
+          );
         }
       } catch (error) {
         if (!controller.signal.aborted) setNotice(error.message);
       } finally {
-        if (deletionsDuringLoad.current === deletedIds) deletionsDuringLoad.current = null;
+        if (deletionsDuringLoad.current === deletedIds)
+          deletionsDuringLoad.current = null;
       }
     }
 
@@ -128,8 +131,8 @@ export default function App() {
     if (isEditing) {
       setMedicines((previous) =>
         previous.map((item) =>
-          item._id === data.medicine._id ? data.medicine : item
-        )
+          item._id === data.medicine._id ? data.medicine : item,
+        ),
       );
     } else {
       setMedicines((previous) => [...previous, data.medicine]);
@@ -145,16 +148,28 @@ export default function App() {
   async function recordDose(medicine, status) {
     setNotice("");
     try {
-      const url = API_URL + "/api/medicines/" + medicine._id + "/doses/" + medicine.doseDate;
+      const url =
+        API_URL +
+        "/api/medicines/" +
+        medicine._id +
+        "/doses/" +
+        medicine.doseDate;
       const response = await fetch(url, {
-        method: "PUT", credentials: "include",
+        method: "PUT",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.message || "Could not update dose.");
-      setMedicines(previous => previous.map(item => item._id === medicine._id
-        ? { ...item, status: data.doseRecord.status } : item));
+      if (!response.ok)
+        throw new Error(data.message || "Could not update dose.");
+      setMedicines((previous) =>
+        previous.map((item) =>
+          item._id === medicine._id
+            ? { ...item, status: data.doseRecord.status }
+            : item,
+        ),
+      );
     } catch (error) {
       setNotice(error.message);
     }
@@ -176,7 +191,7 @@ export default function App() {
 
       deletionsDuringLoad.current?.add(id);
       setMedicines((previous) =>
-        previous.filter((medicine) => medicine._id !== id)
+        previous.filter((medicine) => medicine._id !== id),
       );
     } catch (error) {
       console.error("Could not delete medicine:", error);
@@ -259,11 +274,13 @@ export default function App() {
 
   if (screen === "dashboard") {
     const sortedMedicines = [...medicines].sort((a, b) =>
-      a.reminderTime.localeCompare(b.reminderTime)
+      a.reminderTime.localeCompare(b.reminderTime),
     );
 
     const visibleMedicines = sortedMedicines.filter(
-      (medicine) => filter === "All" || (medicine.scheduledToday && (medicine.status ?? "Pending") === filter)
+      (medicine) =>
+        filter === "All" ||
+        (medicine.scheduledToday && (medicine.status ?? "Pending") === filter),
     );
 
     return (
@@ -342,24 +359,34 @@ export default function App() {
                     <td>
                       <span
                         className="medicine-status"
-                        data-status={medicine.scheduledToday === false ? "Off today" : medicine.status || "Pending"}
+                        data-status={
+                          medicine.scheduledToday === false
+                            ? "Off today"
+                            : medicine.status || "Pending"
+                        }
                       >
-                        {medicine.scheduledToday === false ? "Off today" : medicine.status || "Pending"}
+                        {medicine.scheduledToday === false
+                          ? "Off today"
+                          : medicine.status || "Pending"}
                       </span>
                     </td>
                     <td>
                       <button
                         type="button"
                         onClick={() => recordDose(medicine, "Taken")}
-                        disabled={!medicine.scheduledToday || medicine.status === "Taken"}
+                        disabled={
+                          !medicine.scheduledToday ||
+                          medicine.status === "Taken"
+                        }
                       >
-                        {medicine.status === "Taken"
-                          ? "Taken ✓"
-                          : "Mark taken"}
+                        {medicine.status === "Taken" ? "Taken ✓" : "Mark taken"}
                       </button>
                       <button
                         type="button"
-                        disabled={!medicine.scheduledToday || medicine.status === "Missed"}
+                        disabled={
+                          !medicine.scheduledToday ||
+                          medicine.status === "Missed"
+                        }
                         onClick={() => recordDose(medicine, "Missed")}
                       >
                         Mark missed
@@ -400,7 +427,11 @@ export default function App() {
   if (screen === "login") {
     return (
       <>
-       <Navbar screen={screen} onNavigate={navigateTo} onLogout={handleLogout} />
+        <Navbar
+          screen={screen}
+          onNavigate={navigateTo}
+          onLogout={handleLogout}
+        />
         <Login
           onSignUp={() => navigateTo("signup")}
           onLoginSuccess={handleLoginSuccess}
