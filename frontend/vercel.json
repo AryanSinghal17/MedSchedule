@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "https://medschedule-1-3kvn.onrender.com/api/:path*" }
+  ]
+}
