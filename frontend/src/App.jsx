@@ -1,452 +1,226 @@
-import { useEffect, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useRef, useState } from "react";
 import "./App.css";
 import Login from "./Login";
 import Signup from "./Signup";
 import MedicineForm from "./MedicineForm";
 import Navbar from "./Navbar";
-
-import { API_URL } from "./api";
+import { apiRequest, scheduleDate, SCHEDULE_TIMEZONE } from "./api";
 
 export default function App() {
   const [screen, setScreen] = useState("login");
+  const [user, setUser] = useState(null);
+  const [timeZone, setTimeZone] = useState(SCHEDULE_TIMEZONE);
+  const [sessionState, setSessionState] = useState("loading");
+  const [sessionAttempt, setSessionAttempt] = useState(0);
   const [medicines, setMedicines] = useState([]);
-  const deletionsDuringLoad = useRef(null);
+  const [listState, setListState] = useState("loading");
+  const [listError, setListError] = useState("");
   const [notice, setNotice] = useState("");
   const [filter, setFilter] = useState("All");
   const [editingMedicine, setEditingMedicine] = useState(null);
-  const [user, setUser] = useState(null);
-  const [loadingSession, setLoadingSession] = useState(true);
-
-  useEffect(() => {
-    // Ask Express which account owns the current session cookie.
-    async function restoreSession() {
-      try {
-        const response = await fetch(`${API_URL}/api/auth/me`, {
-          credentials: "include",
-        });
-
-        if (!response.ok) {
-          setUser(null);
-          setScreen("login");
-          return;
-        }
-
-        const data = await response.json();
-        setUser(data.user);
-        setScreen("dashboard");
-      } catch (error) {
-        console.error("Could not check login session:", error);
-        setUser(null);
-        setScreen("login");
-      } finally {
-        setLoadingSession(false);
-      }
-    }
-
-    restoreSession();
+  const [busy, setBusy] = useState("");
+  const busyRef = useRef("");
+  const listRequest = useRef(null);
+  const revision = useRef(0);
+  function setOperation(value) { busyRef.current = value; setBusy(value); }
+  const expireSession = useCallback(() => {
+    revision.current++;
+    listRequest.current?.abort();
+    setUser(null); setMedicines([]); setEditingMedicine(null); setFilter("All");
+    setScreen("login"); setNotice("Your session has expired. Please log in again.");
   }, []);
 
   useEffect(() => {
-    if (screen !== "dashboard" || !user) return;
-
     const controller = new AbortController();
-    const deletedIds = new Set();
-    deletionsDuringLoad.current = deletedIds;
-    // Load saved schedules and their dose status for the active day.
-    async function loadMedicines() {
-      try {
-        const response = await fetch(`${API_URL}/api/medicines`, {
-          credentials: "include",
-          signal: controller.signal,
-        });
-        const data = await response.json();
-
-        if (!response.ok) {
-          setNotice(data.message || "Could not load medicines.");
-          return;
-        }
-
-        // A list request can finish after the user deletes a row.
-        if (!controller.signal.aborted) {
-          setMedicines(
-            data.medicines.filter((item) => !deletedIds.has(item._id)),
-          );
-        }
-      } catch (error) {
-        if (!controller.signal.aborted) setNotice(error.message);
-      } finally {
-        if (deletionsDuringLoad.current === deletedIds)
-          deletionsDuringLoad.current = null;
-      }
-    }
-
-    loadMedicines();
+    apiRequest("/api/auth/me", { signal: controller.signal }).then(data => {
+      if (controller.signal.aborted) return;
+      setUser(data.user); setTimeZone(data.timeZone || SCHEDULE_TIMEZONE); setScreen("dashboard"); setSessionState("ready");
+    }).catch(error => {
+      if (controller.signal.aborted) return;
+      if (error.status === 401) setSessionState("ready");
+      else { setSessionState("error"); setNotice(error.message); }
+    });
     return () => controller.abort();
-  }, [screen, user]);
+  }, [sessionAttempt]);
 
-  // Require a signed-in user before opening a medicine screen.
+  const loadMedicines = useCallback(async () => {
+    if (busyRef.current) return;
+    listRequest.current?.abort();
+    const controller = new AbortController();
+    listRequest.current = controller;
+    const startedAt = revision.current;
+    setListState("loading");
+    setListError("");
+    try {
+      const data = await apiRequest("/api/medicines", { signal: controller.signal });
+      if (controller.signal.aborted || startedAt !== revision.current) return;
+      setMedicines(data.medicines); setTimeZone(data.timeZone || SCHEDULE_TIMEZONE); setListState("ready");
+    } catch (error) {
+      if (controller.signal.aborted || startedAt !== revision.current) return;
+      if (error.status === 401) expireSession();
+      else { setListState("error"); setListError(error.message); }
+    }
+  }, [expireSession]);
+
+  useEffect(() => {
+    if (!user || screen !== "dashboard") return;
+    const refresh = () => { if (!document.hidden) loadMedicines(); };
+    const initial = setTimeout(refresh, 0);
+    const timer = setInterval(refresh, 30_000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      clearTimeout(initial); clearInterval(timer); listRequest.current?.abort();
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [user, screen, loadMedicines]);
+
   function navigateTo(page) {
-    const requiresLogin = page === "dashboard" || page === "medicine";
-
-    if (requiresLogin && !user) {
-      setScreen("login");
+    if (busyRef.current) return;
+    const destination = user ? (["dashboard", "medicine"].includes(page) ? page : "dashboard")
+      : (page === "signup" ? "signup" : "login");
+    setNotice(""); setEditingMedicine(null);
+    if (destination === "dashboard" && screen !== "dashboard") setListState("loading");
+    setScreen(destination);
+  }
+  function handleAuthSuccess(data) {
+    setUser(data.user); setTimeZone(data.timeZone || SCHEDULE_TIMEZONE); setNotice(""); setMedicines([]);
+    setListState("loading"); setFilter("All"); setScreen("dashboard");
+  }
+  async function mutate(operation, path, options, onSuccess) {
+    if (busyRef.current) return;
+    setOperation(operation); revision.current++; listRequest.current?.abort(); setNotice("");
+    try {
+      const data = await apiRequest(path, options);
+      onSuccess(data);
+      return data;
+    } catch (error) {
+      if (error.status === 401) expireSession();
+      else if (operation !== "save") setNotice(error.message);
+      throw error;
+    } finally { setOperation(""); }
+  }
+  async function saveMedicine(medicine) {
+    const id = editingMedicine?._id;
+    await mutate("save", `/api/medicines${id ? `/${id}` : ""}`, {
+      method: id ? "PATCH" : "POST", body: JSON.stringify(medicine),
+    }, data => {
+      // The original save endpoint returns the schedule without daily dose metadata.
+      const doseDate = scheduleDate(timeZone);
+      const weekday = new Intl.DateTimeFormat("en-GB", { timeZone, weekday: "short" }).format(new Date());
+      setMedicines(previous => {
+        const existing = previous.find(item => item._id === id);
+        const saved = {
+          ...data.medicine,
+          doseDate,
+          scheduledToday: data.medicine.days.includes(weekday),
+          status: existing?.doseDate === doseDate ? existing.status : "Pending",
+        };
+        return id ? previous.map(item => item._id === id ? saved : item) : [...previous, saved];
+      });
+      setEditingMedicine(null); setFilter("All"); setListState("loading"); setScreen("dashboard");
+    });
+  }
+  async function recordDose(medicine, status) {
+    if (listState !== "ready" || busyRef.current) return;
+    if (medicine.doseDate !== scheduleDate(timeZone)) {
+      await loadMedicines();
+      setNotice("The schedule day changed. Review today's schedule before marking a dose.");
       return;
     }
-
-    setEditingMedicine(null);
-    setScreen(page);
-  }
-
-  function handleLoginSuccess(loggedInUser) {
-    setUser(loggedInUser);
-    // Entering the dashboard triggers its medicine request.
-    setScreen("dashboard");
-  }
-
-  function handleSignupSuccess(newUser) {
-    setUser(newUser);
-    // Entering the dashboard triggers its medicine request.
-    setScreen("dashboard");
-  }
-
-  // Create or edit a schedule and return to the list after a successful save.
-  async function saveMedicine(medicine) {
-    const isEditing = Boolean(editingMedicine);
-    const url = isEditing
-      ? `${API_URL}/api/medicines/${editingMedicine._id}`
-      : `${API_URL}/api/medicines`;
-
-    const response = await fetch(url, {
-      method: isEditing ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(medicine),
-    });
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.message || "Could not save medicine.");
-    }
-
-    if (isEditing) {
-      setMedicines((previous) =>
-        previous.map((item) =>
-          item._id === data.medicine._id ? data.medicine : item,
-        ),
-      );
-    } else {
-      setMedicines((previous) => [...previous, data.medicine]);
-    }
-
-    setEditingMedicine(null);
-    setFilter("All");
-    setScreen("dashboard");
-  }
-
-  // Old: markTaken only called setMedicines(), so a reload lost the change.
-  // Save this day's status first, then display the value confirmed by Express.
-  async function recordDose(medicine, status) {
-    setNotice("");
     try {
-      const url =
-        API_URL +
-        "/api/medicines/" +
-        medicine._id +
-        "/doses/" +
-        medicine.doseDate;
-      const response = await fetch(url, {
-        method: "PUT",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-      const data = await response.json();
-      if (!response.ok)
-        throw new Error(data.message || "Could not update dose.");
-      setMedicines((previous) =>
-        previous.map((item) =>
-          item._id === medicine._id
-            ? { ...item, status: data.doseRecord.status }
-            : item,
-        ),
-      );
-    } catch (error) {
-      setNotice(error.message);
-    }
+      await mutate(`dose:${medicine._id}`, `/api/medicines/${medicine._id}/doses/${medicine.doseDate}`, {
+        method: "PUT", body: JSON.stringify({ status }),
+      }, data => setMedicines(previous => previous.map(item => item._id === medicine._id
+        ? { ...item, status: data.doseRecord.status } : item)));
+    } catch { /* The shared request handler displays the error. */ }
   }
-
-  // Remove a schedule from the list after the API confirms deletion.
   async function deleteMedicine(id) {
+    if (listState !== "ready") return;
     try {
-      const response = await fetch(`${API_URL}/api/medicines/${id}`, {
-        method: "DELETE",
-        credentials: "include",
+      await mutate(`delete:${id}`, `/api/medicines/${id}`, { method: "DELETE" }, () => {
+        setMedicines(previous => previous.filter(item => item._id !== id));
       });
-      const data = await response.json();
-
-      if (!response.ok) {
-        console.error(data.message || "Could not delete medicine.");
-        return;
-      }
-
-      deletionsDuringLoad.current?.add(id);
-      setMedicines((previous) =>
-        previous.filter((medicine) => medicine._id !== id),
-      );
-    } catch (error) {
-      console.error("Could not delete medicine:", error);
-    }
+    } catch { /* The shared request handler displays the error. */ }
   }
-
-  // Open the form with the selected schedule.
-  function editMedicine(medicine) {
-    setEditingMedicine(medicine);
-    setScreen("medicine");
-  }
-
-  // Clear the selection for a new schedule.
-  function openAddMedicine() {
-    setEditingMedicine(null);
-    setScreen("medicine");
-  }
-
-  // Return to the list without submitting the form.
-  function cancelMedicine() {
-    setEditingMedicine(null);
-    setScreen("dashboard");
-  }
-
-  // End the server session and clear this account from React.
   async function handleLogout() {
+    if (!user) return;
     try {
-      const response = await fetch(`${API_URL}/api/auth/logout`, {
-        method: "POST",
-        credentials: "include",
+      await mutate("logout", "/api/auth/logout", { method: "POST" }, () => {
+        setUser(null); setMedicines([]); setEditingMedicine(null); setFilter("All"); setScreen("login");
       });
-
-      if (!response.ok) {
-        console.error("Could not log out.");
-        return;
-      }
-
-      setUser(null);
-      setNotice("");
-      setMedicines([]);
-      setEditingMedicine(null);
-      setScreen("login");
-    } catch (error) {
-      console.error("Could not log out:", error);
+    } catch {
+      // Resume a list request cancelled by the failed logout attempt.
+      if (screen === "dashboard") void loadMedicines();
     }
   }
 
-  if (loadingSession) {
-    return <p>Checking your session...</p>;
-  }
-
-  if (!user && (screen === "dashboard" || screen === "medicine")) {
-    return (
-      <>
-        <Navbar screen="login" onNavigate={navigateTo} />
-        <Login
-          onSignUp={() => navigateTo("signup")}
-          onLoginSuccess={handleLoginSuccess}
-        />
-      </>
-    );
-  }
-
-  if (screen === "medicine") {
-    return (
-      <>
-        <Navbar
-          screen={screen}
-          onNavigate={navigateTo}
-          onLogout={handleLogout}
-        />
-        <MedicineForm
-          onSave={saveMedicine}
-          medicine={editingMedicine}
-          onCancel={cancelMedicine}
-        />
-      </>
-    );
-  }
-
-  if (screen === "dashboard") {
-    const sortedMedicines = [...medicines].sort((a, b) =>
-      a.reminderTime.localeCompare(b.reminderTime),
-    );
-
-    const visibleMedicines = sortedMedicines.filter(
-      (medicine) =>
-        filter === "All" ||
-        (medicine.scheduledToday && (medicine.status ?? "Pending") === filter),
-    );
-
-    return (
-      <>
-        <Navbar
-          screen={screen}
-          onNavigate={navigateTo}
-          onLogout={handleLogout}
-        />
-
-        <main className="dashboard">
-          {notice && <p role="alert">{notice}</p>}
+  if (sessionState !== "ready") return <main className="session-message">
+    {sessionState === "loading" ? <p role="status">Checking your session...</p> : <>
+      <p role="alert">{notice}</p>
+      <button onClick={() => { setSessionState("loading"); setNotice(""); setSessionAttempt(value => value + 1); }}>Retry connection</button>
+    </>}
+  </main>;
+  const rows = [...medicines].sort((a, b) => a.reminderTime.localeCompare(b.reminderTime))
+    .filter(item => filter === "All" || (item.scheduledToday && item.status === filter));
+  const actionsDisabled = Boolean(busy) || listState !== "ready";
+  return <>
+    <Navbar screen={editingMedicine && screen === "medicine" ? "edit" : screen} user={user} busy={busy} onNavigate={navigateTo} onLogout={handleLogout} />
+    {notice && <div className="app-notice" role="alert">{notice}</div>}
+    {!user ? (screen === "signup"
+      ? <Signup onLogIn={() => navigateTo("login")} onSignupSuccess={handleAuthSuccess} onBusyChange={setOperation} />
+      : <Login onSignUp={() => navigateTo("signup")} onLoginSuccess={handleAuthSuccess} onBusyChange={setOperation} />)
+      : screen === "medicine"
+        ? <MedicineForm key={editingMedicine?._id || "new"} medicine={editingMedicine} onSave={saveMedicine}
+          onCancel={() => navigateTo("dashboard")} timeZone={timeZone} disabled={Boolean(busy)} />
+        : <main className="dashboard">
           <header className="schedule-heading">
-            <span className="schedule-label">Your schedule</span>
-            <h1>My medicines</h1>
-            <p>
-              {medicines.length}{" "}
-              {medicines.length === 1 ? "medicine" : "medicines"} · sorted by
-              time
-            </p>
+            <span className="schedule-label">Your schedule</span><h1>My medicines</h1>
+            <p>{medicines.length} {medicines.length === 1 ? "medicine" : "medicines"} · sorted by time</p>
+            <p>All times in {timeZone}</p>
           </header>
-
           <div className="dashboard-controls">
-            <div
-              className="medicine-filters"
-              role="group"
-              aria-label="Filter medicines"
-            >
-              {["All", "Taken", "Missed", "Pending"].map((status) => (
-                <button
-                  key={status}
-                  type="button"
-                  onClick={() => setFilter(status)}
-                  aria-pressed={filter === status}
-                >
-                  {status}
-                </button>
-              ))}
+            <div className="medicine-filters" role="group" aria-label="Filter medicines">
+              {["All", "Taken", "Missed", "Pending"].map(status => <button key={status} type="button"
+                onClick={() => setFilter(status)} aria-pressed={filter === status}>{status}</button>)}
             </div>
-
-            <button type="button" onClick={openAddMedicine}>
-              Add medicine
-            </button>
+            <button type="button" disabled={Boolean(busy)} onClick={() => navigateTo("medicine")}>Add medicine</button>
           </div>
-
-          <div className="table-wrapper">
+          {listState === "loading" && <p className="list-message" role="status">Loading your schedule...</p>}
+          {listState === "error" && <div className="list-message">
+            <p role="alert">{listError}</p>
+            <p>Could not refresh your schedule. Previously loaded entries may be out of date.</p>
+            <button disabled={Boolean(busy)} onClick={() => { setNotice(""); loadMedicines(); }}>Retry loading medicines</button>
+          </div>}
+          {busy.startsWith("dose:") && <p className="list-message" role="status">Updating dose...</p>}
+          <div className="table-wrapper" aria-busy={listState === "loading"}>
             <table className="medicine-table" aria-label="My medicines">
-              <thead>
-                <tr>
-                  <th scope="col">Time</th>
-                  <th scope="col">Medicine name</th>
-                  <th scope="col">Prescribed dose</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Actions</th>
-                </tr>
-              </thead>
-
+              <thead><tr>{["Time", "Medicine name", "Prescribed dose", "Status", "Actions"].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead>
               <tbody>
-                {visibleMedicines.map((medicine) => (
-                  <tr key={medicine._id}>
-                    <td>
-                      <span className="medicine-time">
-                        {medicine.reminderTime}
-                      </span>
-                    </td>
-                    <td>
-                      <strong>{medicine.name}</strong>
-                      <br />
-                      <small>
-                        {medicine.emailReminder
-                          ? "Email reminder on"
-                          : "No email reminder"}
-                      </small>
-                    </td>
-                    <td>{medicine.dose}</td>
-                    <td>
-                      <span
-                        className="medicine-status"
-                        data-status={
-                          medicine.scheduledToday === false
-                            ? "Off today"
-                            : medicine.status || "Pending"
-                        }
-                      >
-                        {medicine.scheduledToday === false
-                          ? "Off today"
-                          : medicine.status || "Pending"}
-                      </span>
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        onClick={() => recordDose(medicine, "Taken")}
-                        disabled={
-                          !medicine.scheduledToday ||
-                          medicine.status === "Taken"
-                        }
-                      >
-                        {medicine.status === "Taken" ? "Taken ✓" : "Mark taken"}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={
-                          !medicine.scheduledToday ||
-                          medicine.status === "Missed"
-                        }
-                        onClick={() => recordDose(medicine, "Missed")}
-                      >
-                        Mark missed
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => editMedicine(medicine)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => deleteMedicine(medicine._id)}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-
-                {visibleMedicines.length === 0 && (
-                  <tr>
-                    <td colSpan={5}>
-                      {medicines.length === 0
-                        ? "Add your first medicine to get started."
-                        : `No medicines match the ${filter.toLowerCase()} filter.`}
-                    </td>
-                  </tr>
-                )}
+                {rows.map(medicine => <tr key={medicine._id}>
+                  <td data-label="Time"><span className="medicine-time">{medicine.reminderTime}</span></td>
+                  <td data-label="Medicine"><strong>{medicine.name}</strong><br /><small>{medicine.emailReminder ? "Email reminder on" : "No email reminder"}</small></td>
+                  <td data-label="Prescribed dose">{medicine.dose}</td>
+                  <td data-label="Status"><span className="medicine-status" data-status={medicine.scheduledToday ? medicine.status : "Off today"}>
+                    {medicine.scheduledToday ? medicine.status : "Off today"}</span></td>
+                  <td className="medicine-row-actions">
+                    <button type="button" onClick={() => recordDose(medicine, "Taken")}
+                      disabled={actionsDisabled || !medicine.scheduledToday || medicine.status === "Taken"}>
+                      {medicine.status === "Taken" && medicine.scheduledToday ? "Taken ✓" : "Mark taken"}</button>
+                    <button type="button" onClick={() => recordDose(medicine, "Missed")}
+                      disabled={actionsDisabled || !medicine.scheduledToday || medicine.status === "Missed"}>Mark missed</button>
+                    <button type="button" disabled={actionsDisabled} onClick={() => { setNotice(""); setEditingMedicine(medicine); setScreen("medicine"); }}>Edit</button>
+                    <button type="button" disabled={actionsDisabled} onClick={() => deleteMedicine(medicine._id)}>
+                      {busy === `delete:${medicine._id}` ? "Deleting..." : "Delete"}</button>
+                  </td>
+                </tr>)}
+                {rows.length === 0 && listState === "ready" && <tr><td colSpan={5} className="empty-state">
+                  {medicines.length === 0 ? "Add your first medicine to get started." : `No medicines match the ${filter.toLowerCase()} filter.`}
+                </td></tr>}
               </tbody>
             </table>
           </div>
-        </main>
-      </>
-    );
-  }
-
-  if (screen === "login") {
-    return (
-      <>
-        <Navbar
-          screen={screen}
-          onNavigate={navigateTo}
-          onLogout={handleLogout}
-        />
-        <Login
-          onSignUp={() => navigateTo("signup")}
-          onLoginSuccess={handleLoginSuccess}
-        />
-      </>
-    );
-  }
-
-  return (
-    <>
-      <Navbar screen={screen} onNavigate={navigateTo} />
-      <Signup
-        onLogIn={() => navigateTo("login")}
-        onSignupSuccess={handleSignupSuccess}
-      />
-    </>
-  );
+        </main>}
+  </>;
 }

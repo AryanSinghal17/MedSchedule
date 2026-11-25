@@ -1,9 +1,10 @@
-export default function Navbar({ screen, onNavigate, onLogout }) {
-  const pages = [
-    { id: "login", label: "Log in" },
-    { id: "signup", label: "Sign up" },
+export default function Navbar({ screen, user, busy, onNavigate, onLogout }) {
+  const pages = user ? [
     { id: "dashboard", label: "My medicines" },
     { id: "medicine", label: "Add medicine" },
+  ] : [
+    { id: "login", label: "Log in" },
+    { id: "signup", label: "Sign up" },
   ];
 
   return (
@@ -24,15 +25,16 @@ export default function Navbar({ screen, onNavigate, onLogout }) {
           <button
             key={page.id}
             type="button"
+            disabled={Boolean(busy)}
             aria-current={screen === page.id ? "page" : undefined}
             onClick={() => onNavigate(page.id)}
           >
             {page.label}
           </button>
         ))}
-         {onLogout && (
-          <button type="button" onClick={onLogout}>
-            Log out
+         {user && onLogout && (
+          <button type="button" disabled={Boolean(busy)} onClick={onLogout}>
+            {busy === "logout" ? "Logging out..." : "Log out"}
           </button>
         )}
       </nav>

@@ -1,25 +1,32 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import "./App.css";
 
 const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-export default function MedicineForm({ onSave, medicine, onCancel }) {
+export default function MedicineForm({ onSave, medicine, onCancel, timeZone, disabled }) {
+  const submitting = useRef(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
   // Read the form fields and pass the schedule to the parent save handler.
   async function handleSubmit(event) {
     event.preventDefault();
+    if (submitting.current || disabled) return;
 
     const fields = new FormData(event.currentTarget);
 
     const days = fields.getAll("days");
+    if (!fields.get("medicineName").trim() || !fields.get("dose").trim()) {
+      setError("Enter a medicine name and prescribed dose.");
+      return;
+    }
     if (days.length === 0) {
       setError("Choose at least one weekday.");
       return;
     }
 
     setError("");
+    submitting.current = true;
     setSaving(true);
     try {
       await onSave({
@@ -32,12 +39,13 @@ export default function MedicineForm({ onSave, medicine, onCancel }) {
     } catch (cause) {
       setError(cause instanceof TypeError ? "Could not reach the server. Try again." : cause.message);
     } finally {
+      submitting.current = false;
       setSaving(false);
     }
   }
 
   return (
-    <main className="signup-layout">
+    <main className="signup-layout medicine-layout">
       <section className="signup-intro">
         <p className="intro-label">
           {medicine ? "Edit medicine" : "Add medicine"}
@@ -46,13 +54,14 @@ export default function MedicineForm({ onSave, medicine, onCancel }) {
         <p>Enter the prescribed dose and choose a daily reminder time.</p>
       </section>
 
-      <form onSubmit={handleSubmit} onChange={() => setError("")}>
+      <form onSubmit={handleSubmit} onChange={() => setError("")} aria-busy={saving}>
         <h2>Medicine details</h2>
 
         <div>
           <label htmlFor="medicineName">Medicine name</label>
           <input
             id="medicineName"
+            disabled={saving || disabled}
             name="medicineName"
             type="text"
             defaultValue={medicine?.name ?? ""}
@@ -65,6 +74,7 @@ export default function MedicineForm({ onSave, medicine, onCancel }) {
           <label htmlFor="dose">Prescribed dose</label>
           <input
             id="dose"
+            disabled={saving || disabled}
             name="dose"
             type="text"
             defaultValue={medicine?.dose ?? ""}
@@ -74,9 +84,10 @@ export default function MedicineForm({ onSave, medicine, onCancel }) {
         </div>
 
         <div>
-          <label htmlFor="reminderTime">Daily reminder time</label>
+          <label htmlFor="reminderTime">Daily reminder time ({timeZone})</label>
           <input
             id="reminderTime"
+            disabled={saving || disabled}
             name="reminderTime"
             type="time"
             defaultValue={medicine?.reminderTime ?? "08:00"}
@@ -84,7 +95,7 @@ export default function MedicineForm({ onSave, medicine, onCancel }) {
           />
         </div>
 
-        <fieldset>
+        <fieldset className="weekday-picker" disabled={saving || disabled}>
           <legend>Schedule days</legend>
           {weekdays.map((day) => (
             <label key={day}>
@@ -103,6 +114,7 @@ export default function MedicineForm({ onSave, medicine, onCancel }) {
           <input
             type="checkbox"
             name="emailReminder"
+            disabled={saving || disabled}
             defaultChecked={medicine?.emailReminder ?? true}
           />
           <span>
@@ -112,11 +124,11 @@ export default function MedicineForm({ onSave, medicine, onCancel }) {
         </label>
 
         {error && <p role="alert">{error}</p>}
-        <button type="submit" disabled={saving}>
-          {medicine ? "Save changes" : "Save medicine"}
+        <button type="submit" disabled={saving || disabled}>
+          {saving ? "Saving..." : medicine ? "Save changes" : "Save medicine"}
         </button>
 
-        <button type="button" disabled={saving} onClick={onCancel}>
+        <button type="button" disabled={saving || disabled} onClick={onCancel}>
           Cancel
         </button>
       </form>

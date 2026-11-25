@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import "./App.css";
 
-import { API_URL } from "./api";
+import { apiRequest } from "./api";
 
-export default function Signup({ onLogIn, onSignupSuccess }) {
+export default function Signup({ onLogIn, onSignupSuccess, onBusyChange }) {
+  const submitting = useRef(false);
+  const [pending, setPending] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -14,6 +16,7 @@ export default function Signup({ onLogIn, onSignupSuccess }) {
   // Validate the form, create the account, then start its login session.
   async function handleSubmit(event) {
     event.preventDefault();
+    if (submitting.current) return;
 
     if (!name.trim()) {
       setMessage("Enter your full name.");
@@ -26,9 +29,13 @@ export default function Signup({ onLogIn, onSignupSuccess }) {
     }
 
     setMessage("");
+    submitting.current = true;
+    setPending(true);
+    onBusyChange("auth");
+    let accountCreated = false;
 
     try {
-      const signupResponse = await fetch(`${API_URL}/api/auth/signup`, {
+      await apiRequest("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -39,31 +46,18 @@ export default function Signup({ onLogIn, onSignupSuccess }) {
         }),
       });
 
-      const signupData = await signupResponse.json();
-
-      if (!signupResponse.ok) {
-        setMessage(signupData.message || "Sign up failed.");
-        return;
-      }
-
-      const loginResponse = await fetch(`${API_URL}/api/auth/login`, {
+      accountCreated = true;
+      const loginData = await apiRequest("/api/auth/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ email: email.trim(), password }),
       });
-
-      const loginData = await loginResponse.json();
-
-      if (!loginResponse.ok) {
-        setMessage("Account created. Please log in.");
-        return;
-      }
-
-      onSignupSuccess(loginData.user);
+      onSignupSuccess(loginData);
     } catch (error) {
-      console.error("Signup request failed:", error);
-      setMessage("Could not connect to the server.");
+      setMessage(accountCreated ? "Account created. Please log in to continue." : error.message);
+    } finally {
+      submitting.current = false;
+      setPending(false);
+      onBusyChange("");
     }
   }
 
@@ -84,7 +78,7 @@ export default function Signup({ onLogIn, onSignupSuccess }) {
         </ul>
       </section>
 
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} aria-busy={pending}>
         <h2>Sign up</h2>
         <p>Enter your name, email, and a password to create an account.</p>
 
@@ -92,6 +86,7 @@ export default function Signup({ onLogIn, onSignupSuccess }) {
           <label htmlFor="signupName">Full name</label>
           <input
             id="signupName"
+            disabled={pending}
             type="text"
             autoComplete="name"
             value={name}
@@ -104,6 +99,7 @@ export default function Signup({ onLogIn, onSignupSuccess }) {
           <label htmlFor="signupEmail">Email</label>
           <input
             id="signupEmail"
+            disabled={pending}
             type="email"
             autoComplete="email"
             value={email}
@@ -116,6 +112,7 @@ export default function Signup({ onLogIn, onSignupSuccess }) {
           <label htmlFor="signupPassword">Password</label>
           <input
             id="signupPassword"
+            disabled={pending}
             type={showPassword ? "text" : "password"}
             autoComplete="new-password"
             value={password}
@@ -128,6 +125,7 @@ export default function Signup({ onLogIn, onSignupSuccess }) {
           <label htmlFor="confirmPassword">Confirm password</label>
           <input
             id="confirmPassword"
+            disabled={pending}
             type={showPassword ? "text" : "password"}
             autoComplete="new-password"
             value={confirmPassword}
@@ -138,15 +136,17 @@ export default function Signup({ onLogIn, onSignupSuccess }) {
 
         <button
           type="button"
+          disabled={pending}
+          aria-pressed={showPassword}
           onClick={() => setShowPassword((visible) => !visible)}
         >
           {showPassword ? "Hide passwords" : "Show passwords"}
         </button>
 
-        <button type="submit">Create account</button>
+        <button type="submit" disabled={pending}>{pending ? "Creating account..." : "Create account"}</button>
         <p role="status">{message}</p>
 
-        <button type="button" onClick={onLogIn}>
+        <button type="button" disabled={pending} onClick={onLogIn}>
           Already have an account? Log in
         </button>
       </form>

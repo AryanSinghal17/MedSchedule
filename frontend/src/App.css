@@ -157,17 +157,18 @@
 }
 
 .medicine-table td:last-child {
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .medicine-table button {
+  margin: 3px;
   box-shadow: 0 3px 9px rgb(40 65 25 / 8%);
 }
 
 .medicine-table button:disabled {
-  border-color: #507f23;
-  background: #507f23;
-  color: white;
+  border-color: #d6ddcf;
+  background: #f0f3ec;
+  color: #66715e;
   cursor: default;
   opacity: 1;
 }
@@ -301,7 +302,7 @@ body {
   font-weight: 600;
 }
 
-.signup-layout input {
+.signup-layout input:not([type="checkbox"]) {
   width: 100%;
   min-height: 46px;
   padding: 10px 13px;
@@ -428,6 +429,10 @@ body {
 
 .medicine-layout form {
   grid-template-columns: minmax(0, 1fr);
+}
+
+.medicine-layout form > div:nth-of-type(3) {
+  grid-column: 1 / -1;
 }
 
 .medicine-fields,
@@ -583,5 +588,300 @@ body {
 
   .app-header nav button {
     padding: 10px 12px;
+  }
+}
+
+/* Shared form and touch-friendly controls. */
+.app-notice {
+  width: min(1200px, calc(100% - 32px));
+  margin: 20px auto;
+}
+
+.list-message { grid-column: 1 / -1; margin: 0; }
+
+.app-header button:disabled, .dashboard button:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.signup-layout input:disabled { opacity: 0.7; }
+
+button, input {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.signup-layout > *, .signup-layout form > *, .navbar-brand > div {
+  min-width: 0;
+}
+
+.signup-layout input:not([type="checkbox"]) {
+  min-width: 0;
+  font-size: 16px;
+}
+
+.signup-layout form > p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.signup-layout button[type="button"], .dashboard button {
+  min-height: 44px;
+}
+
+.signup-layout button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.weekday-picker {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #cbdcb4;
+  border-radius: 12px;
+}
+
+.weekday-picker legend {
+  padding: 0 5px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.weekday-picker label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  margin: 0;
+  border: 1px solid #d4e3bf;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.weekday-picker label:has(input:checked) {
+  border-color: #315d27;
+  background: #eaf3d8;
+  color: #24491c;
+}
+
+.weekday-picker input, .reminder-option input {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: #315d27;
+}
+
+.reminder-option small {
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+.dashboard > [role="alert"] {
+  grid-column: 1 / -1;
+}
+
+[role="alert"], .signup-layout [role="status"]:not(:empty) {
+  padding: 12px 16px;
+  border: 1px solid #e9c4a7;
+  border-radius: 10px;
+  background: #fff6ed;
+  color: #793d20;
+  overflow-wrap: anywhere;
+}
+
+.session-message {
+  width: fit-content;
+  margin: 15vh auto;
+  padding: 24px;
+}
+
+.medicine-table .empty-state {
+  padding: 40px 24px;
+  text-align: center;
+  white-space: normal;
+  color: #56664b;
+}
+
+.medicine-status[data-status="Missed"] {
+  border-color: #eac1b4;
+  background: #fff0ea;
+  color: #963e29;
+}
+
+.medicine-status[data-status="Off today"] {
+  border-color: #d5dcd0;
+  background: #f0f3ec;
+  color: #58634f;
+}
+
+.medicine-table strong, .medicine-table td {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 800px) {
+  .table-wrapper {
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .medicine-table, .medicine-table tbody {
+    display: block;
+    min-width: 0;
+  }
+
+  /* Keep column headings available to assistive technology. */
+  .medicine-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .medicine-table tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 16px;
+    margin-bottom: 14px;
+    padding: 18px;
+    border: 1px solid #d4e3bf;
+    border-radius: 16px;
+    background: white;
+    box-shadow: 0 4px 16px rgb(40 65 25 / 5%);
+  }
+
+  .medicine-table td {
+    display: block;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .medicine-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 8px;
+    color: #596b4e;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .medicine-table td[data-label="Medicine"] {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .medicine-table td[data-label="Status"] {
+    grid-column: 1 / -1;
+  }
+
+  .medicine-table .medicine-row-actions {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding-top: 16px;
+    border-top: 1px solid #e3ebda;
+  }
+
+  .medicine-row-actions button {
+    margin: 0;
+    padding: 10px 8px;
+    border-radius: 10px;
+  }
+
+  .medicine-table .empty-state {
+    grid-column: 1 / -1;
+    padding: 20px 0;
+  }
+}
+
+@media (max-width: 600px) {
+  .dashboard {
+    width: calc(100% - 32px);
+  }
+
+  .dashboard-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .medicine-filters {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 2px;
+  }
+
+  .medicine-filters button {
+    padding: 10px 4px;
+    font-size: 13px;
+  }
+
+  .signup-layout {
+    gap: 16px;
+    margin: 20px auto 32px;
+  }
+
+  .signup-intro {
+    padding: 22px;
+  }
+
+  .signup-intro h1 {
+    font-size: 28px;
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+  }
+
+  .signup-intro ul {
+    display: none;
+  }
+
+  .signup-layout form {
+    padding: 20px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .signup-layout form > div:nth-of-type(3),
+  .signup-layout form > div:nth-of-type(4) {
+    grid-column: 1 / -1;
+  }
+
+  .weekday-picker {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .navbar-brand {
+    gap: 10px;
+  }
+
+  .navbar-brand p {
+    font-size: 12px;
+  }
+
+  .app-header nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    padding: 4px;
+    margin-inline: -4px;
+  }
+
+  .app-header nav:has(> button:nth-child(3)) {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  }
+
+  .app-header nav button {
+    min-width: 0;
+    padding: 10px 8px;
+    font-size: 13px;
   }
 }
