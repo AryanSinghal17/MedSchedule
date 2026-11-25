@@ -23,6 +23,11 @@ export default function Signup({ onLogIn, onSignupSuccess, onBusyChange }) {
       return;
     }
 
+    if (password.length < 8) {
+      setMessage("Password must be at least 8 characters.");
+      return;
+    }
+
     if (password !== confirmPassword) {
       setMessage("Your passwords must match.");
       return;
@@ -112,6 +117,8 @@ export default function Signup({ onLogIn, onSignupSuccess, onBusyChange }) {
           <label htmlFor="signupPassword">Password</label>
           <input
             id="signupPassword"
+            minLength={8}
+            aria-describedby="passwordRequirements"
             disabled={pending}
             type={showPassword ? "text" : "password"}
             autoComplete="new-password"
@@ -119,12 +126,14 @@ export default function Signup({ onLogIn, onSignupSuccess, onBusyChange }) {
             onChange={(event) => setPassword(event.target.value)}
             required
           />
+          <small id="passwordRequirements">Use at least 8 characters.</small>
         </div>
 
         <div>
           <label htmlFor="confirmPassword">Confirm password</label>
           <input
             id="confirmPassword"
+            minLength={8}
             disabled={pending}
             type={showPassword ? "text" : "password"}
             autoComplete="new-password"
