@@ -23,10 +23,15 @@ const production = process.env.NODE_ENV === "production";
 const frontendOrigin = process.env.FRONTEND_ORIGIN || "http://localhost:3020";
 if (production) app.set("trust proxy", 1);
 
+function isAllowedOrigin(origin) {
+  return origin === frontendOrigin ||
+    /^https:\/\/med-schedule-[a-z0-9-]+\.vercel\.app$/i.test(origin);
+}
+
 // Accept browser requests from the configured React app.
 app.use((req, res, next) => {
   const origin = req.get("origin");
-  if (origin && origin !== frontendOrigin) {
+  if (origin && !isAllowedOrigin(origin)) {
     return res.status(403).json({ message: "Unrecognized browser origin." });
   }
   next();
@@ -35,7 +40,9 @@ app.use(express.json());
 
 app.use(cors({
   // Old: origin: "http://localhost:3020" only supported local development.
-  origin: frontendOrigin,
+  origin(origin, callback) {
+    callback(null, !origin || isAllowedOrigin(origin) ? origin || frontendOrigin : false);
+  },
   credentials: true,
 }));
 
